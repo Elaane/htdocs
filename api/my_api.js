@@ -12,34 +12,10 @@ const pool = mysql.createPool({
 
 module.exports = pool.promise();
 
-router.get("/ämnen", async (req, res) =>{
-   try {
-        const [rows] = await db.query("SELECT * FROM ämne");
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-}});
-
-router.post("/ämnen", async (req, res) =>{
-    const { title, användarnamn } = req.body;
-    if (!titel || !användarnamn) return res.status(400).json({error: "Titel och användarnamn Krävs"});
-    try {
-        const [result] = await db.query("INSERT INTO ämne (titel, användarnamn) VALUES (?, ?)", [titel, användarnamn]);
-        res.status(201).json({ id: result.insertId, titel, användarnamn });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-   
-router.get("/inlägg/:ämneId", async (req, res) => {
-    try {
-        const [rows] = await db.query("SELECT * FROM inlägg WHERE ämne_id = ?", [req.params.ämneId]);
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
+const express = require( "express");
+const router = express.Router();
+const db = require ( "../db");
+const bcrypt = require("bcrypt");
 
 // Testa anslutningen
 pool.getConnection((err, connection) => {
@@ -51,9 +27,31 @@ pool.getConnection((err, connection) => {
     connection.release();
 });
 
-router.get("/", async (req, res) => {
+// hämta alla ämnen
+router.get("/ämnen", async (req, res) =>{
+   try {
+        const [rows] = await db.query("SELECT * FROM ämne");
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+}});
+
+// lägg till nya ämnen
+router.post("/ämnen", async (req, res) =>{
+    const { title, användarnamn } = req.body;
+    if (!titel || !användarnamn) return res.status(400).json({error: "Titel och användarnamn Krävs"});
     try {
-        const [rows] = await db.query("SELECT * FROM posts");
+        const [result] = await db.query("INSERT INTO ämne (titel, användarnamn) VALUES (?, ?)", [titel, användarnamn]);
+        res.status(201).json({ id: result.insertId, titel, användarnamn });
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+    }
+});
+   
+// hämta inlägg för x ämne
+router.get("/inlägg/:ämneId", async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT * FROM inlägg WHERE ämne_id = ?", [req.params.ämneId]);
         res.json(rows);
     } catch (error) {
         res.status(500).json({ error: "Database error" });
@@ -61,8 +59,31 @@ router.get("/", async (req, res) => {
 });
 
 
+// gilla inlägg
+router.post("/gilla", async (req, res) => {
+    const { inlägg_id, användarnamn } = req.body;
+    if (!inlägg_id || !användarnamn) return res.status(400).json({ error: "Fält saknas" });
 
+    try {
+        await db.query("INSERT INTO gilla (inlägg_id, användarnamn) VALUES (?, ?)", [inlägg_id, användarnamn]);
+        res.json({ message: "Gillat!" });
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+    }
+});
 
+// Nytt inlägg
+router.post("/inlägg", async (req, res) => {
+    const { text, användarnamn, ämne_id } = req.body;
+    if (!text || !användarnamn || !ämne_id) return res.status(400).json({ error: "Alla fält krävs" });
+
+    try {
+        const [result] = await db.query("INSERT INTO inlägg (text, användarnamn, ämne_id, tidpunkt) VALUES (?, ?, ?, NOW())", [text, användarnamn, ämne_id]);
+        res.status(201).json({ id: result.insertId });
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+    }
+});
 
 router.post("/", async (req, res) => {
     try {
@@ -75,7 +96,6 @@ router.post("/", async (req, res) => {
         res.status(500).json({ error: "Database error" });
     }
 });
-
 
 router.put("/:id", async (req, res) => {
     try {
@@ -91,7 +111,6 @@ router.put("/:id", async (req, res) => {
     }
 });
 
-
 router.delete("/:id", async (req, res) => {
     try {
         const [result] = await db.query("DELETE FROM posts WHERE id = ?", [req.params.id]);
@@ -102,68 +121,39 @@ router.delete("/:id", async (req, res) => {
         res.status(500).json({ error: "Database error" });
     }
 });
+
+// Ny användare
 router.post("/register", async (req, res) => {
-    try {
-        const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ error: "Username and password are required" });
-        }
-
-        
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        
-        const [result] = await db.query(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
-            [username, hashedPassword]
-        );
-
-        res.status(201).json({ id: result.insertId, username });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-
-router.get("/", async (req, res) => {
-    try {
-        const [rows] = await db.query("SELECT * FROM users");
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-
-router.post("/login", async (req, res) => {
-    try {
-        const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ error: "Username and password are required" });
-        }
-
-       
-        const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
-        if (rows.length === 0) {
-            return res.status(404).json({ error: "User not found" });
-        }
-
-        const user = rows[0];
-
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ error: "Invalid password" });
-        }
-
    
-        res.json({ id: user.id, username: user.username });
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: "Fält saknas" });
+
+    try {
+        const hashed = await bcrypt.hash(password, 10);
+        await db.query("INSERT INTO users (username, password) VALUES (?, ?)", [username, hashed]);
+        res.status(201).json({ message: "Registrerad!" });
     } catch (error) {
         res.status(500).json({ error: "Database error" });
     }
 });
 
+// logga in
+router.post("/login", async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: "Fält saknas" });
+
+    try {
+        const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
+        if (rows.length === 0) return res.status(404).json({ error: "Användare finns inte" });
+
+        const match = await bcrypt.compare(password, rows[0].password);
+        if (!match) return res.status(401).json({ error: "Fel lösenord" });
+
+        res.json({ message: "Inloggad", användare: { id: rows[0].id, username: rows[0].username } });
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+    }
+});
+       
 module.exports = router;
 
