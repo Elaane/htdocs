@@ -1,159 +1,232 @@
+const express = require("express");
+const bcrypt = require("bcrypt");
 const mysql = require("mysql2");
+const jwt = require("jsonwebtoken");
+const { body, validationResult } = require("express-validator");
+const helmet = require("helmet");
+const cors = require("cors");
+
+const app = express();
+
+app.use(express.json());
+app.use(helmet());  // Säkerhetsheaders
+app.use(cors());    // Tillåt CORS - justera vid behov
+
+const JWT_SECRET = "din_superhemliga_jwt_nyckel"; // Byt till miljövariabel i produktion
 
 const pool = mysql.createPool({
-    host: "localhost",
-    user: "root",
-    password: "dittlösenord",
-    database: "forum",
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+  host: "localhost",
+  user: "root",
+  password: "",
+  database: "forum",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
+const db = pool.promise();
 
-module.exports = pool.promise();
-
-const express = require( "express");
-const router = express.Router();
-const db = require ( "../db");
-const bcrypt = require("bcrypt");
-
-// Testa anslutningen
 pool.getConnection((err, connection) => {
-    if (err) {
-        console.error("Database connection failed:", err);
-        return;
-    }
-    console.log("Connected to MySQL database!");
-    connection.release();
+  if (err) {
+    console.error("Database connection failed:", err);
+    process.exit(1); // Avsluta appen om db ej fungerar
+  }
+  console.log("Connected to MySQL database!");
+  connection.release();
 });
 
-// hämta alla ämnen
-router.get("/ämnen", async (req, res) =>{
-   try {
-        const [rows] = await db.query("SELECT * FROM ämne");
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-}});
+// Middleware för att verifiera JWT-token och skydda routes
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  if (!token) return res.status(401).json({ error: "Token saknas" });
 
-// lägg till nya ämnen
-router.post("/ämnen", async (req, res) =>{
-    const { title, användarnamn } = req.body;
-    if (!titel || !användarnamn) return res.status(400).json({error: "Titel och användarnamn Krävs"});
-    try {
-        const [result] = await db.query("INSERT INTO ämne (titel, användarnamn) VALUES (?, ?)", [titel, användarnamn]);
-        res.status(201).json({ id: result.insertId, titel, användarnamn });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-   
-// hämta inlägg för x ämne
-router.get("/inlägg/:ämneId", async (req, res) => {
-    try {
-        const [rows] = await db.query("SELECT * FROM inlägg WHERE ämne_id = ?", [req.params.ämneId]);
-        res.json(rows);
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: "Token ogiltig" });
+    req.user = user;
+    next();
+  });
+}
 
+// REGISTER med validering och hashning
+app.post(
+  "/register",
+  [
+    body("username").isLength({ min: 3 }),
+    body("password").isLength({ min: 6 }),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
 
-// gilla inlägg
-router.post("/gilla", async (req, res) => {
-    const { inlägg_id, användarnamn } = req.body;
-    if (!inlägg_id || !användarnamn) return res.status(400).json({ error: "Fält saknas" });
-
-    try {
-        await db.query("INSERT INTO gilla (inlägg_id, användarnamn) VALUES (?, ?)", [inlägg_id, användarnamn]);
-        res.json({ message: "Gillat!" });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-// Nytt inlägg
-router.post("/inlägg", async (req, res) => {
-    const { text, användarnamn, ämne_id } = req.body;
-    if (!text || !användarnamn || !ämne_id) return res.status(400).json({ error: "Alla fält krävs" });
-
-    try {
-        const [result] = await db.query("INSERT INTO inlägg (text, användarnamn, ämne_id, tidpunkt) VALUES (?, ?, ?, NOW())", [text, användarnamn, ämne_id]);
-        res.status(201).json({ id: result.insertId });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-router.post("/", async (req, res) => {
-    try {
-        const { title, content } = req.body;
-        if (!title || !content) return res.status(400).json({ error: "Title and content required" });
-
-        const [result] = await db.query("INSERT INTO posts (title, content) VALUES (?, ?)", [title, content]);
-        res.status(201).json({ id: result.insertId, title, content });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-router.put("/:id", async (req, res) => {
-    try {
-        const { title, content } = req.body;
-        if (!title || !content) return res.status(400).json({ error: "Title and content required" });
-
-        const [result] = await db.query("UPDATE posts SET title = ?, content = ? WHERE id = ?", [title, content, req.params.id]);
-        if (result.affectedRows === 0) return res.status(404).json({ error: "Post not found" });
-
-        res.json({ id: req.params.id, title, content });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-router.delete("/:id", async (req, res) => {
-    try {
-        const [result] = await db.query("DELETE FROM posts WHERE id = ?", [req.params.id]);
-        if (result.affectedRows === 0) return res.status(404).json({ error: "Post not found" });
-
-        res.json({ message: "Post deleted" });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
-
-// Ny användare
-router.post("/register", async (req, res) => {
-   
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: "Fält saknas" });
 
     try {
-        const hashed = await bcrypt.hash(password, 10);
-        await db.query("INSERT INTO users (username, password) VALUES (?, ?)", [username, hashed]);
-        res.status(201).json({ message: "Registrerad!" });
-    } catch (error) {
-        res.status(500).json({ error: "Database error" });
-    }
-});
+      const [existingUser] = await db.query(
+        "SELECT id FROM users WHERE username = ?",
+        [username]
+      );
+      if (existingUser.length > 0)
+        return res.status(409).json({ error: "Användarnamn upptaget" });
 
-// logga in
-router.post("/login", async (req, res) => {
+      const hashed = await bcrypt.hash(password, 10);
+      await db.query("INSERT INTO users (username, password) VALUES (?, ?)", [
+        username,
+        hashed,
+      ]);
+      res.status(201).json({ message: "Registrerad!" });
+    } catch (error) {
+      console.error("Register error:", error);
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+);
+
+// LOGIN och JWT-token generering
+app.post(
+  "/login",
+  [
+    body("username").notEmpty(),
+    body("password").notEmpty(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: "Fält saknas" });
+    try {
+      const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [
+        username,
+      ]);
+      if (rows.length === 0)
+        return res.status(404).json({ error: "Användare finns inte" });
+
+      const match = await bcrypt.compare(password, rows[0].password);
+      if (!match) return res.status(401).json({ error: "Fel lösenord" });
+
+      // Skapa JWT-token
+      const token = jwt.sign(
+        { id: rows[0].id, username: rows[0].username },
+        JWT_SECRET,
+        { expiresIn: "2h" }
+      );
+
+      res.json({ message: "Inloggad", token });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+);
+
+// EXEMPEL: skyddad route - hämta egna inlägg (kräver token)
+app.get("/mina-inlägg", authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM inlägg WHERE users_id = ?", [
+      req.user.id,
+    ]);
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching posts:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// Hämta alla ämnen (öppen route)
+app.get("/ämnen", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM ämne");
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching ämnen:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// Lägg till ämne (kräver token)
+app.post(
+  "/ämnen",
+  authenticateToken,
+  [
+    body("titel").notEmpty(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { titel } = req.body;
 
     try {
-        const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
-        if (rows.length === 0) return res.status(404).json({ error: "Användare finns inte" });
-
-        const match = await bcrypt.compare(password, rows[0].password);
-        if (!match) return res.status(401).json({ error: "Fel lösenord" });
-
-        res.json({ message: "Inloggad", användare: { id: rows[0].id, username: rows[0].username } });
+      const [result] = await db.query(
+        "INSERT INTO ämne (titel, användarnamn) VALUES (?, ?)",
+        [titel, req.user.username]
+      );
+      res.status(201).json({ id: result.insertId, titel, användarnamn: req.user.username });
     } catch (error) {
-        res.status(500).json({ error: "Database error" });
+      console.error("Error creating ämne:", error);
+      res.status(500).json({ error: "Database error" });
     }
-});
-       
-module.exports = router;
+  }
+);
 
+// Lägg till inlägg (kräver token)
+app.post(
+  "/inlägg",
+  authenticateToken,
+  [
+    body("text").notEmpty(),
+    body("ämne_id").isInt(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { text, ämne_id } = req.body;
+
+    try {
+      const [result] = await db.query(
+        "INSERT INTO inlägg (innehål, users_id, ämne_id, skapad_kl) VALUES (?, ?, ?, NOW())",
+        [text, req.user.id, ämne_id]
+      );
+      res.status(201).json({ id: result.insertId });
+    } catch (error) {
+      console.error("Error adding inlägg:", error);
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+);
+
+// Gilla inlägg (kräver token)
+app.post(
+  "/gilla",
+  authenticateToken,
+  [
+    body("inlägg_id").isInt(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { inlägg_id } = req.body;
+
+    try {
+      await db.query(
+        "INSERT INTO gilla (inlägg_id, användarnamn) VALUES (?, ?)",
+        [inlägg_id, req.user.username]
+      );
+      res.json({ message: "Gillat!" });
+    } catch (error) {
+      console.error("Error liking inlägg:", error);
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+);
+
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
