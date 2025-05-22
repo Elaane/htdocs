@@ -23,11 +23,15 @@ router.get("/ämnen", async (req, res) =>{
 router.post("/ämnen", async (req, res) =>{
     const { title, användarnamn } = req.body;
     if (!titel || !användarnamn) return res.status(400).json({error: "Titel och användarnamn Krävs"});
-
-    try{
-        const[result]= await db.query("INSERT INTO ämne (totel, användarnamn) VALUES (?, ?)", [titel,användarnamn]);
+    try {
+        const [result] = await db.query("INSERT INTO ämne (titel, användarnamn) VALUES (?, ?)", [titel, användarnamn]);
+        res.status(201).json({ id: result.insertId, titel, användarnamn });
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
     }
-})
+});
+   
+
 
 // Testa anslutningen
 pool.getConnection((err, connection) => {
