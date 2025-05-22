@@ -20,8 +20,13 @@ router.get("/ämnen", async (req, res) =>{
         res.status(500).json({ error: "Database error" });
 }});
 
-router.post("ämnen", async (req, res) =>{
+router.post("/ämnen", async (req, res) =>{
     const { title, användarnamn } = req.body;
+    if (!titel || !användarnamn) return res.status(400).json({error: "Titel och användarnamn Krävs"});
+
+    try{
+        const[result]= await db.query("INSERT INTO ämne (totel, användarnamn) VALUES (?, ?)", [titel,användarnamn]);
+    }
 })
 
 // Testa anslutningen
