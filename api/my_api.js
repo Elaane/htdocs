@@ -31,6 +31,14 @@ router.post("/ämnen", async (req, res) =>{
     }
 });
    
+router.get("/inlägg/:ämneId", async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT * FROM inlägg WHERE ämne_id = ?", [req.params.ämneId]);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: "Database error" });
+    }
+});
 
 
 // Testa anslutningen
