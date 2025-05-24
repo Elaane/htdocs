@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="sv">
+  <head>
+    <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8" />
+    <title>Forum för fårskallar</title>
+  </head>
+  <body>
+    <h1>Välkommen till Forumet</h1>
+
+    <h2>Logga in</h2>
+    <form action="forum.php" method="post">
+      <input type="hidden" name="action" value="login" />
+      Användarnamn: <input type="text" name="username" /><br />
+      Lösenord: <input type="password" name="password" /><br />
+      <button type="submit">Logga in</button>
+    </form>
+
+    <h2>Registrera dig</h2>
+    <form action="forum.php" method="post">
+      <input type="hidden" name="action" value="register" />
+      Användarnamn: <input type="text" name="username" /><br />
+      Lösenord: <input type="password" name="password" /><br />
+      <button type="submit">Registrera</button>
+    </form>
+
+    <hr />
+
+    <h2>Skapa ny tråd</h2>
+    <form action="forum.php" method="post">
+      <input type="hidden" name="action" value="new_topic" />
+      Rubrik: <input type="text" name="title" /><br />
+      Inlägg: <textarea name="content"></textarea><br />
+      <button type="submit">Skapa tråd</button>
+    </form>
+
+    <hr />
+
+    <h2>Visa forum</h2>
+    <form action="forum.php" method="get">
+      <input type="hidden" name="action" value="view" />
+      <button type="submit">Visa alla trådar</button>
+    </form>
+  </body>
+</html>

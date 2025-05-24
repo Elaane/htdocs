@@ -133,7 +133,7 @@ app.get("/mina-inlägg", authenticateToken, async (req, res) => {
   }
 });
 
-// Hämta alla ämnen (öppen route)
+// Hämta alla ämnen 
 app.get("/ämnen", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM ämne");
@@ -144,7 +144,7 @@ app.get("/ämnen", async (req, res) => {
   }
 });
 
-// Lägg till ämne (kräver token)
+// Lägg till ämne token
 app.post(
   "/ämnen",
   authenticateToken,
